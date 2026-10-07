@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, Clock3, Flame, Leaf, MapPin, Menu as MenuIcon, Minus, Plus, ShoppingBag, Sparkles, Star, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Check, ChevronDown, Clock3, ClipboardList, Flame, Leaf, MapPin, Menu as MenuIcon, Minus, PackageCheck, Plus, ShoppingBag, Sparkles, Star, X } from 'lucide-react';
 import './styles.css';
 
 const products = [
@@ -50,6 +50,7 @@ const extrasByCategory = {
 const extrasFor = (product) => extrasByCategory[product.category] ?? extras;
 const money = (number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(number);
 const photo = (id, width = 900) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=85`;
+const orderStatuses = ['Placed', 'Preparing', 'Out for delivery', 'Delivered'];
 
 function Reveal({ children, className = '', delay = 0, style = {} }) {
   const ref = useRef(null);
@@ -68,7 +69,7 @@ function Reveal({ children, className = '', delay = 0, style = {} }) {
   return <div ref={ref} className={`reveal ${className}`} style={{ '--reveal-delay': `${delay}ms`, ...style }}>{children}</div>;
 }
 
-function Header({ cartCount, onCart, onMenu }) {
+function Header({ cartCount, orderCount, onCart, onOrders, onMenu }) {
   return (
     <header className="site-header">
       <a className="wordmark" href="#top" aria-label="BurGrush home">bur<span>grush</span><i>.</i></a>
@@ -76,11 +77,57 @@ function Header({ cartCount, onCart, onMenu }) {
         <a href="#menu">The menu</a><a href="#story">Our thing</a><a href="#reviews">Love notes</a>
       </nav>
       <div className="header-actions">
-        <a className="location-link" href="#find-us"><MapPin size={15} /> Find us</a>
+        <a className="location-link" href="#find-us"><MapPin size={15} /> Delivery info</a>
+        <button className="history-link" onClick={onOrders}><ClipboardList size={16} /> Orders{orderCount > 0 && <b>{orderCount}</b>}</button>
         <button className="cart-button" onClick={onCart} aria-label={`Open bag, ${cartCount} items`}><ShoppingBag size={18} /><span>Bag</span><b key={cartCount}>{cartCount}</b></button>
         <button className="mobile-menu-button" aria-label="Open menu" onClick={onMenu}><MenuIcon size={23} /></button>
       </div>
     </header>
+  );
+}
+
+function OrderHistory({ orders, onClose, onAdvance, onReorder, storageError, focusOrderId }) {
+  useEffect(() => {
+    const closeOnEscape = (event) => event.key === 'Escape' && onClose();
+    window.addEventListener('keydown', closeOnEscape);
+    document.body.classList.add('modal-open');
+    return () => { window.removeEventListener('keydown', closeOnEscape); document.body.classList.remove('modal-open'); };
+  }, [onClose]);
+
+  return (
+    <div className="drawer-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <aside className="cart-drawer order-drawer" role="dialog" aria-modal="true" aria-label="Order history">
+        <div className="drawer-header">
+          <div><span className="eyebrow">YOUR GOOD-FOOD LOG</span><h2>Order history <span>({orders.length})</span></h2></div>
+          <button className="icon-button" onClick={onClose} aria-label="Close order history"><X /></button>
+        </div>
+        <p className="order-demo-note"><Sparkles size={14} /> Demo orders are saved on this device only. No restaurant or courier receives them.</p>
+        {storageError && <p className="storage-error" role="alert">{storageError}</p>}
+        {orders.length === 0 ? (
+          <div className="empty-cart"><span className="empty-bag-icon"><ClipboardList /></span><h3>Your story starts with a bite.</h3><p>Place a demo order and it will show up here—even after you refresh.</p><button className="primary-button" onClick={onClose}>Back to the menu <ArrowRight size={17} /></button></div>
+        ) : (
+          <div className="order-history-list">
+            {orders.map((order) => {
+              const currentStep = orderStatuses.indexOf(order.status);
+              return (
+                <article className={`history-order ${focusOrderId === order.id ? 'history-order--focused' : ''}`} key={order.id}>
+                  <div className="history-order-top"><span><PackageCheck size={16} /> ORDER {order.id}</span><strong>{money(order.total)}</strong></div>
+                  <p className="history-order-date">{new Date(order.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                  <div className="history-order-items">{order.items.map((item, index) => <span key={`${order.id}-${index}`}>{item.quantity} × {item.product.name}</span>)}</div>
+                  <div className="status-track" aria-label={`Order status: ${order.status}`}>{orderStatuses.map((status, index) => <div className={`status-step ${index <= currentStep ? 'complete' : ''}`} key={status}><i>{index < currentStep ? <Check size={10} /> : index + 1}</i><span>{status}</span></div>)}</div>
+                  <div className="history-delivery"><MapPin size={13} /><span>{order.customer.name} · {order.customer.address}</span></div>
+                  <div className="order-history-actions">
+                    {currentStep < orderStatuses.length - 1 ? <button className="demo-status-button" onClick={() => onAdvance(order.id)}><Sparkles size={14} /> Simulate next update <ArrowRight size={14} /></button> : <span className="delivered-note"><Check size={14} /> Demo journey complete</span>}
+                    <button className="order-again-button" onClick={() => onReorder(order)}><ShoppingBag size={14} /> Order again</button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+        <p className="history-footer-note">BurGrush is an ordering demo. Orders, delivery, and payment are not connected to a real service.</p>
+      </aside>
+    </div>
   );
 }
 
@@ -140,7 +187,7 @@ function Customizer({ product, onClose, onAdd }) {
         <div className="customizer-content">
           <span className="eyebrow">{product.tag}</span><h2 id="customizer-title">Make it <span>yours.</span></h2><p>{product.description}</p>
           <h4>Make it extra <span className="optional">(all optional)</span></h4>
-          <div className="extra-list">{options.map((extra) => <label className="extra-option" key={extra.id}><span><input type="checkbox" checked={selected.includes(extra.id)} onChange={() => setSelected((current) => current.includes(extra.id) ? current.filter((id) => id !== extra.id) : [...current, extra.id])} /><span className="fake-check"><Check size={13} /></span>{extra.label}</span><b>+{money(extra.price)}</b></label>)}</div>
+          <div className="extra-list">{options.map((extra) => <button className={`extra-option ${selected.includes(extra.id) ? 'selected' : ''}`} type="button" role="checkbox" aria-checked={selected.includes(extra.id)} key={extra.id} onClick={() => setSelected((current) => current.includes(extra.id) ? current.filter((id) => id !== extra.id) : [...current, extra.id])}><span><span className="fake-check"><Check size={13} /></span>{extra.label}</span><b>+{money(extra.price)}</b></button>)}</div>
           <div className="customizer-bottom"><div className="quantity-picker"><button onClick={() => setQuantity((count) => Math.max(1, count - 1))} aria-label="Decrease quantity"><Minus size={15} /></button><span>{quantity}</span><button onClick={() => setQuantity((count) => count + 1)} aria-label="Increase quantity"><Plus size={15} /></button></div><button className="primary-button modal-add" onClick={() => onAdd(product, selected, quantity)}>Add to bag <span>{money(price * quantity)}</span><ArrowRight size={17} /></button></div>
         </div>
       </section>
@@ -162,24 +209,24 @@ function CartDrawer({ items, onClose, onQuantity, onCheckout }) {
         <div className="drawer-header"><div><span className="eyebrow">GOOD CHOICES, GREAT TASTE</span><h2>Your bag <span>({items.reduce((n, item) => n + item.quantity, 0)})</span></h2></div><button className="icon-button" onClick={onClose} aria-label="Close bag"><X /></button></div>
         {items.length === 0 ? <div className="empty-cart"><span className="empty-bag-icon"><ShoppingBag /></span><h3>It's a little empty in here.</h3><p>Your next favorite meal is one good decision away.</p><button className="primary-button" onClick={onClose}>Find your thing <ArrowRight size={17} /></button></div> : <>
           <div className="cart-items">{items.map((item) => <article className="cart-item" key={item.key}><img src={photo(item.product.image, 240)} alt="" /><div className="cart-item-info"><strong>{item.product.name}</strong><span>{item.extras.length ? item.extras.map((id) => extrasFor(item.product).find((extra) => extra.id === id)?.label).join(', ') : 'The original, no changes'}</span><div className="quantity-picker small"><button onClick={() => onQuantity(item.key, -1)} aria-label={`Remove one ${item.product.name}`}><Minus size={13} /></button><span>{item.quantity}</span><button onClick={() => onQuantity(item.key, 1)} aria-label={`Add one ${item.product.name}`}><Plus size={13} /></button></div></div><b>{money(item.price * item.quantity)}</b></article>)}</div>
-          <div className="cart-summary"><p><span>Subtotal</span><b>{money(subtotal)}</b></p><p><span>Delivery</span><b>Calculated at checkout</b></p><div className="cart-total"><span>Total</span><strong>{money(subtotal)}</strong></div><button className="primary-button checkout-button" onClick={onCheckout}>Let's check out <ArrowRight size={18} /></button><div className="secure-note"><span>✳</span> Good food is on the way.</div></div>
+          <div className="cart-summary"><p><span>Subtotal</span><b>{money(subtotal)}</b></p><p><span>Delivery</span><b>Demo only</b></p><div className="cart-total"><span>Total</span><strong>{money(subtotal)}</strong></div><button className="primary-button checkout-button" onClick={onCheckout}>Let's check out <ArrowRight size={18} /></button><div className="secure-note"><span>✳</span> Demo bag · no order sent yet.</div></div>
         </>}
       </aside>
     </div>
   );
 }
 
-function Checkout({ items, onClose, onSuccess }) {
+function Checkout({ items, onClose, onComplete, onSuccess }) {
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const [submitted, setSubmitted] = useState(false);
+  const [placedOrder, setPlacedOrder] = useState(null);
   useEffect(() => {
     const closeOnEscape = (event) => event.key === 'Escape' && onClose();
     window.addEventListener('keydown', closeOnEscape);
     document.body.classList.add('modal-open');
     return () => { window.removeEventListener('keydown', closeOnEscape); document.body.classList.remove('modal-open'); };
   }, [onClose]);
-  if (submitted) return <div className="modal-backdrop"><section className="success-modal"><div className="success-icon"><Check size={36} /></div><span className="eyebrow">ORDER CONFIRMED</span><h2>That was a<br />good <span>call.</span></h2><p>Your kitchen crew is on it. Get ready for a seriously good meal.</p><button className="primary-button" onClick={onSuccess}>Back to the good stuff <ArrowRight size={17} /></button><span className="order-number">ORDER #BG{Math.floor(1000 + Math.random() * 9000)}</span></section></div>;
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="checkout-modal"><button className="icon-button modal-close" onClick={onClose} aria-label="Close checkout"><X /></button><div className="checkout-top"><span className="eyebrow">ALMOST AT THE GOOD PART</span><h2>Let's get this<br /><span>to you.</span></h2><p>Just the essentials. Then it's burger o'clock.</p></div><form onSubmit={(event) => { event.preventDefault(); setSubmitted(true); }}><label>Your name<input required placeholder="What should we call you?" autoComplete="name" /></label><label>Email address<input required type="email" placeholder="you@example.com" autoComplete="email" /></label><label>Delivery address<input required placeholder="Street address, apartment, etc." autoComplete="street-address" /></label><div className="checkout-delivery"><span><Clock3 size={16} /> About 25–35 min</span><span><MapPin size={16} /> Free delivery today</span></div><button className="primary-button checkout-submit" type="submit">Place order <strong>{money(total)}</strong><ArrowRight size={17} /></button><p className="checkout-disclaimer">By placing your order, you're agreeing to have a really nice meal.</p></form></section></div>;
+  if (placedOrder) return <div className="modal-backdrop"><section className="success-modal"><div className="success-icon"><Check size={36} /></div><span className="eyebrow">DEMO ORDER SAVED</span><h2>That was a<br /><span>good call.</span></h2><p>Your order <strong>{placedOrder.id}</strong> is saved in this browser. Nothing was sent to a real restaurant.</p><div className="success-order-summary"><span>{placedOrder.items.reduce((sum, item) => sum + item.quantity, 0)} items</span><strong>{money(placedOrder.total)}</strong></div><button className="primary-button" onClick={() => onSuccess(placedOrder.id)}>Track this order <ArrowRight size={17} /></button><span className="order-number">DEMO ONLY · NO PAYMENT TAKEN</span></section></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="checkout-modal"><button className="icon-button modal-close" onClick={onClose} aria-label="Close checkout"><X /></button><div className="checkout-top"><span className="eyebrow">ALMOST AT THE GOOD PART</span><h2>Let's get this<br /><span>to you.</span></h2><p>Just the essentials. Then it's burger o'clock.</p></div><form onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const order = { id: `BG-${Date.now().toString().slice(-7)}`, createdAt: new Date().toISOString(), status: orderStatuses[0], total, customer: { name: String(form.get('name')).trim(), email: String(form.get('email')).trim(), address: String(form.get('address')).trim() }, items: items.map((item) => ({ ...item })) }; onComplete(order); setPlacedOrder(order); }}><label>Your name<input name="name" required placeholder="What should we call you?" autoComplete="name" /></label><label>Email address<input name="email" required type="email" placeholder="you@example.com" autoComplete="email" /></label><label>Delivery address<input name="address" required placeholder="Street address, apartment, etc." autoComplete="street-address" /></label><div className="checkout-demo-notice"><PackageCheck size={15} /> Demo only: your details stay in this browser. No order is sent and no payment is taken.</div><div className="checkout-delivery"><span><Clock3 size={16} /> Demo status tracker</span><span><MapPin size={16} /> Not connected</span></div><button className="primary-button checkout-submit" type="submit">Place demo order <strong>{money(total)}</strong><ArrowRight size={17} /></button><p className="checkout-disclaimer">This is a front-end demo, not a real delivery service.</p></form></section></div>;
 }
 
 function App() {
@@ -190,8 +237,45 @@ function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cart, setCart] = useState([]);
   const [addedMessage, setAddedMessage] = useState('');
+  const [orders, setOrders] = useState([]);
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
+  const [ordersOpen, setOrdersOpen] = useState(false);
+  const [focusedOrderId, setFocusedOrderId] = useState('');
+  const [storageError, setStorageError] = useState('');
   const filteredProducts = category === 'All' ? products : products.filter((product) => product.category === category);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  useEffect(() => {
+    try {
+      const savedOrders = window.localStorage.getItem('burgrush-order-history');
+      if (savedOrders) {
+        const parsedOrders = JSON.parse(savedOrders);
+        const validOrder = (order) => order
+          && typeof order.id === 'string'
+          && typeof order.createdAt === 'string'
+          && orderStatuses.includes(order.status)
+          && Number.isFinite(order.total)
+          && order.customer
+          && typeof order.customer.name === 'string'
+          && typeof order.customer.address === 'string'
+          && Array.isArray(order.items)
+          && order.items.every((item) => item?.product && typeof item.product.name === 'string' && Number.isFinite(item.quantity));
+        if (!Array.isArray(parsedOrders) || !parsedOrders.every(validOrder)) throw new Error('Saved order history has an invalid format.');
+        setOrders(parsedOrders);
+      }
+    } catch (error) {
+      setStorageError(`Order history could not be loaded from this browser: ${error.message}`);
+    } finally {
+      setOrdersLoaded(true);
+    }
+  }, []);
+  useEffect(() => {
+    if (!ordersLoaded || storageError) return;
+    try {
+      window.localStorage.setItem('burgrush-order-history', JSON.stringify(orders));
+    } catch (error) {
+      setStorageError(`Order history could not be saved on this browser: ${error.message}`);
+    }
+  }, [orders, ordersLoaded, storageError]);
   useEffect(() => {
     if (!addedMessage) return undefined;
     const timeout = window.setTimeout(() => setAddedMessage(''), 2600);
@@ -212,7 +296,23 @@ function App() {
   const launchCustomizer = (product) => setCustomizing(product);
   const closeCart = () => setCartOpen(false);
   const startCheckout = () => { setCartOpen(false); setCheckoutOpen(true); };
-  const finishCheckout = () => { setCheckoutOpen(false); setCart([]); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const finishCheckout = (orderId) => { setCheckoutOpen(false); setCart([]); setFocusedOrderId(orderId); setOrdersOpen(true); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const reorder = (order) => {
+    setCart((current) => order.items.reduce((nextCart, item) => {
+      const existing = nextCart.find((entry) => entry.key === item.key);
+      return existing
+        ? nextCart.map((entry) => entry.key === item.key ? { ...entry, quantity: entry.quantity + item.quantity } : entry)
+        : [...nextCart, { ...item }];
+    }, current));
+    setOrdersOpen(false);
+    setCartOpen(true);
+    setAddedMessage('Your previous picks are back in your bag');
+  };
+  const advanceOrder = (orderId) => setOrders((current) => current.map((order) => {
+    if (order.id !== orderId) return order;
+    const nextStatus = Math.min(orderStatuses.indexOf(order.status) + 1, orderStatuses.length - 1);
+    return { ...order, status: orderStatuses[nextStatus] };
+  }));
   const moveHero = (event) => {
     if (event.pointerType !== 'mouse') return;
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -231,9 +331,9 @@ function App() {
   };
 
   return <div id="top">
-    <div className="announcement"><span className="announcement-star">✳</span> LOCAL LOVE, DELIVERED. <a href="#menu">FREE DELIVERY ON YOUR FIRST ORDER <ArrowRight size={12} /></a><span className="announcement-star">✳</span></div>
-    <Header cartCount={cartCount} onCart={() => setCartOpen(true)} onMenu={() => setMobileOpen((open) => !open)} />
-    {mobileOpen && <div className="mobile-nav"><button onClick={() => setMobileOpen(false)} aria-label="Close menu"><X /></button><a href="#menu" onClick={() => setMobileOpen(false)}>The menu</a><a href="#story" onClick={() => setMobileOpen(false)}>Our thing</a><a href="#reviews" onClick={() => setMobileOpen(false)}>Love notes</a></div>}
+    <div className="announcement"><span className="announcement-star">✳</span> BURGRUSH ONLINE DEMO. <a href="#menu">EXPLORE THE MENU <ArrowRight size={12} /></a><span className="announcement-star">✳</span></div>
+    <Header cartCount={cartCount} orderCount={orders.length} onCart={() => setCartOpen(true)} onOrders={() => setOrdersOpen(true)} onMenu={() => setMobileOpen((open) => !open)} />
+    {mobileOpen && <div className="mobile-nav"><button onClick={() => setMobileOpen(false)} aria-label="Close menu"><X /></button><a href="#menu" onClick={() => setMobileOpen(false)}>The menu</a><a href="#story" onClick={() => setMobileOpen(false)}>Our thing</a><a href="#reviews" onClick={() => setMobileOpen(false)}>Love notes</a><button className="mobile-orders-link" onClick={() => { setMobileOpen(false); setOrdersOpen(true); }}><ClipboardList size={16} /> Order history ({orders.length})</button></div>}
     <main>
       <section className="hero">
         <div className="hero-copy"><div className="hero-kicker"><span className="kicker-line" /> BURGERS WITH MAIN CHARACTER ENERGY</div><h1>Big flavor.<br /><span>Zero</span> boring<span className="lime-dot">.</span></h1><p className="hero-description">Good days start with great food.<br />We make the kind of burgers you think about later.</p><div className="hero-actions"><a className="primary-button" href="#menu">Meet your new favorite <ArrowRight size={17} /></a><a className="text-link" href="#story"><span className="play-dot">↘</span> Our not-so-secret sauce</a></div><div className="hero-social-proof"><div className="avatar-stack"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&h=80&q=75" alt="" /><img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=80&h=80&q=75" alt="" /><img src="https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=80&h=80&q=75" alt="" /></div><div><div className="proof-stars"><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><Star size={12} fill="currentColor" /><span>4.9/5</span></div><span className="proof-caption">from people with excellent taste</span></div></div><a href="#menu" className="scroll-cue"><span>SCROLL FOR THE GOOD STUFF</span><ArrowDown size={14} /></a></div>
@@ -248,12 +348,13 @@ function App() {
       <section className="manifesto" id="story"><div className="manifesto-photo"><img src={photo('photo-1550547660-d9450f859349', 1200)} alt="Freshly made burger with crisp lettuce and melted cheese" loading="lazy" /><span className="manifesto-photo-tag">HONESTLY? GO AHEAD.</span></div><div className="manifesto-copy"><Reveal><span className="eyebrow">NO RULES. JUST REALLY GOOD FOOD.</span><h2>We take our<br />burgers <span>seriously.</span><br />Ourselves?<br />Not so much.</h2><p>Real ingredients. People who give a damn. Recipes made from scratch because shortcuts never tasted this good.</p><a className="cream-button" href="#find-us">A little more about us <ArrowUpRight size={16} /></a><span className="manifesto-doodle">✳</span></Reveal></div></section>
       <section className="promise-strip"><div><span className="promise-icon"><Leaf size={18} /></span><strong>Real food.<br /><span>Real ingredients.</span></strong></div><div><span className="promise-icon"><Clock3 size={18} /></span><strong>Made to order.<br /><span>Worth the wait.</span></strong></div><div><span className="promise-icon"><Sparkles size={18} /></span><strong>Never boring.<br /><span>Never, ever.</span></strong></div></section>
       <section className="review-section" id="reviews"><Reveal><span className="eyebrow">DON'T JUST TAKE OUR WORD FOR IT</span><h2>Love notes from<br />the <span>hungry.</span></h2><div className="review-card"><div className="review-stars">★★★★★</div><blockquote>“I had one bite and immediately texted the group chat. This is not a drill. This is the burger.”</blockquote><div className="review-person"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=96&h=96&q=75" alt="" /><span><strong>Jamie R.</strong><small>LOCAL REGULAR, BIG FEELINGS</small></span><span className="review-verified"><Check size={13} /> VERIFIED CRAVING</span></div></div><div className="review-pagination"><span>01</span><div><i></i></div><span>03</span></div></Reveal></section>
-      <section className="location-section" id="find-us"><div><span className="eyebrow">MEET YOU THERE?</span><h2>Good food.<br /><span>Good company.</span><br />Great idea.</h2><p>Your neighborhood's new favorite corner. Come hungry, leave happy.</p><a className="primary-button" href="https://maps.google.com/?q=burger+restaurant" target="_blank" rel="noreferrer">Find your nearest BurGrush <ArrowUpRight size={17} /></a></div><div className="location-card"><div className="map-doodle"><span className="map-road road-one"></span><span className="map-road road-two"></span><span className="map-road road-three"></span><span className="map-pin"><MapPin size={23} fill="currentColor" /></span><span className="map-caption">YOU + US = LUNCH</span><span className="map-spark map-spark-one">✳</span><span className="map-spark map-spark-two">✳</span></div><div className="location-card-footer"><span><strong>YOUR LOCAL BURGRUSH</strong><small>Good things are just around the corner.</small></span><ArrowUpRight size={19} /></div></div></section>
+      <section className="location-section" id="find-us"><div><span className="eyebrow">A CLEAR NOTE ABOUT THIS SITE</span><h2>No fake pins.<br /><span>Just good food.</span><br />In demo mode.</h2><p>BurGrush is an independent web project, not a restaurant listing. There isn't a real storefront or delivery fleet connected to this demo.</p><button className="primary-button" onClick={() => setOrdersOpen(true)}>See your order history <ClipboardList size={16} /></button></div><div className="location-card"><div className="online-demo-card"><span className="online-demo-icon"><PackageCheck size={25} /></span><span className="eyebrow">ONLINE-ONLY PROJECT</span><h3>Made for the web.<br />Ready for your ideas.</h3><p>Try the menu, build a bag and place a demo order. Your order history stays right here in this browser.</p><span className="demo-chip"><i></i> NO REAL STORE · NO PAYMENT</span></div><div className="location-card-footer"><span><strong>YOUR BROWSER IS THE DEMO KITCHEN</strong><small>Order details are stored locally on this device.</small></span><Sparkles size={19} /></div></div></section>
     </main>
-    <footer className="site-footer"><div className="footer-main"><a className="wordmark footer-wordmark" href="#top">bur<span>grush</span><i>.</i></a><p>Big flavor. Zero boring.<br />Made fresh in your neighborhood.</p><div className="footer-links"><a href="#menu">The menu</a><a href="#story">Our thing</a><a href="#find-us">Find us</a><a href="#reviews">Say hey</a></div><div className="footer-right"><span>HUNGRY LOOKS GOOD ON YOU.</span><a href="#menu">LET'S FIX THAT <ArrowUpRight size={14} /></a></div></div><div className="footer-bottom"><span>© 2025 BURGRUSH. ALL BITE, NO BORING.</span><span>MADE WITH GOOD INTENTIONS & EXTRA PICKLES <span className="footer-heart">♥</span></span></div></footer>
+    <footer className="site-footer"><div className="footer-main"><a className="wordmark footer-wordmark" href="#top">bur<span>grush</span><i>.</i></a><p>Big flavor. Zero boring.<br />An online-only ordering demo.</p><div className="footer-links"><a href="#menu">The menu</a><a href="#story">Our thing</a><a href="#find-us">Delivery demo</a><a href="#reviews">Say hey</a></div><div className="footer-right"><span>HUNGRY LOOKS GOOD ON YOU.</span><a href="#menu">LET'S FIX THAT <ArrowUpRight size={14} /></a></div></div><div className="footer-bottom"><span>© 2025 BURGRUSH. ALL BITE, NO BORING.</span><span>MADE WITH GOOD INTENTIONS & EXTRA PICKLES <span className="footer-heart">♥</span></span></div></footer>
     {customizing && <Customizer key={customizing.id} product={customizing} onClose={() => setCustomizing(null)} onAdd={addToCart} />}
     {cartOpen && <CartDrawer items={cart} onClose={closeCart} onQuantity={updateQuantity} onCheckout={startCheckout} />}
-    {checkoutOpen && <Checkout items={cart} onClose={() => setCheckoutOpen(false)} onSuccess={finishCheckout} />}
+    {checkoutOpen && <Checkout items={cart} onClose={() => setCheckoutOpen(false)} onComplete={(order) => setOrders((current) => [order, ...current])} onSuccess={finishCheckout} />}
+    {ordersOpen && <OrderHistory orders={orders} onClose={() => { setOrdersOpen(false); setFocusedOrderId(''); }} onAdvance={advanceOrder} onReorder={reorder} storageError={storageError} focusOrderId={focusedOrderId} />}
     {addedMessage && <div key={addedMessage} className="added-toast" role="status"><span className="toast-check"><Check size={16} /></span><span><strong>Good choice.</strong><small>{addedMessage}</small></span><span className="toast-spark">✳</span></div>}
   </div>;
 }
