@@ -2,6 +2,10 @@
 
 An animated, responsive food-ordering storefront for an original burger brand. Browse burgers, fries, shakes, and coffee; customize your order; and try the cart, checkout, and order-history demo.
 
+## Live site
+
+Visit BurGrush at **https://burgrush.vercel.app**. The deployed site stays available even when the local development server is not running.
+
 ## Run locally
 
 ```powershell
